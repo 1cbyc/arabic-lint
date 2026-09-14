@@ -458,3 +458,15 @@ built around staying quiet.
 Part of a series measuring where Arabic silently breaks in software.
 See also [`arabic-tts-frontend`](https://pypi.org/project/arabic-tts-frontend/) —
 numerals, dates and currency converted to spoken Arabic before synthesis.
+
+## The measurement behind this tool
+
+The severity bands here are not a guess. They come from sweeping 341 public Arabic datasets
+on the Hugging Face Hub: 361 of 363 findings across 276 readable datasets were a **single
+stray presentation form**, and exactly one dataset carried long reshaped runs. That is why
+one pasted glyph and a destroyed corpus are no longer reported identically.
+
+The audit, its full per-dataset results and every script are archived and citable:
+
+- DOI: [10.5281/zenodo.22733934](https://doi.org/10.5281/zenodo.22733934)
+- Dataset: [`syamjithnk/arabic-corpus-audit`](https://huggingface.co/datasets/syamjithnk/arabic-corpus-audit)
