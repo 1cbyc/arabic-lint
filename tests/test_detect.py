@@ -78,6 +78,21 @@ def test_lam_alef_recovery_is_wrong_and_says_so():
     assert "lam-alef" in note
 
 
+def test_non_lam_alef_two_character_decomposition_is_unsafe():
+    """U+FBDD from the issue reproduction expands to U+06C7 U+0674."""
+    recovered, safe, note = recover("ﺳﯝﺎ")
+    assert safe is False
+    assert recovered == "اٴۇس"
+    assert "decomposes to 2 characters" in note
+
+
+def test_three_character_decomposition_is_unsafe():
+    """U+FC5E expands to SPACE + DAMMATAN + SHADDA."""
+    _, safe, note = recover("ﱞ")
+    assert safe is False
+    assert "decomposes to 3 characters" in note
+
+
 def test_line_and_column_are_reported():
     text = "line one\nok here\n" + EMIRATES_BAD + "\n"
     r = scan_text(text)

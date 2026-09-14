@@ -104,10 +104,8 @@ def _shaping_forms_in_A() -> frozenset:
 # Arabic proper (letters, tashkeel, Arabic-Indic digits).
 ARABIC = (0x0600, 0x06FF)
 
-# The lam-alef ligatures. These are why recovery is not simply reversible:
-# each is ONE codepoint that decomposes to TWO, and it decomposes in logical
-# order while the text around it is in visual order -- so the pair comes out
-# swapped relative to its neighbours.
+# The lam-alef ligatures are the common example of why recovery is not simply
+# reversible. They are kept separately so the unsafe note can name that case.
 LAM_ALEF = frozenset(range(0xFEF5, 0xFEFD))  # U+FEF5..U+FEFC
 
 
@@ -146,6 +144,15 @@ def is_arabic(ch: str) -> bool:
 def has_lam_alef(text: str) -> bool:
     """True if the text contains a lam-alef ligature codepoint."""
     return any(ord(c) in LAM_ALEF for c in text)
+
+
+def _multi_codepoint_decomposition(text: str) -> int | None:
+    """Return the first unsafe NFKC expansion length in *text*, if any."""
+    for char in text:
+        length = len(unicodedata.normalize("NFKC", char))
+        if length > 1:
+            return length
+    return None
 
 
 # Severity, and why it is not decoration.
@@ -238,8 +245,8 @@ def recover(text: str) -> tuple[str, bool, str]:
     Returns (recovered_text, is_safe, note).
 
     NFKC maps each presentation form back to its base letter, and reversing
-    undoes the visual reordering. That round-trips exactly -- *unless* the span
-    contains a lam-alef ligature.
+    undoes the visual reordering. That round-trips exactly -- *unless* a
+    presentation form expands to multiple codepoints.
 
     A lam-alef ligature is a single codepoint standing for two letters. NFKC
     expands it in logical order, but the surrounding text is in visual order, so
@@ -262,12 +269,18 @@ def recover(text: str) -> tuple[str, bool, str]:
     if not any(is_presentation_form(c) for c in text):
         return text, True, "nothing to recover"
 
-    unsafe = has_lam_alef(text)
+    decomposition_length = _multi_codepoint_decomposition(text)
     guess = unicodedata.normalize("NFKC", text)[::-1]
-    if unsafe:
+    if has_lam_alef(text):
         return guess, False, (
             "contains a lam-alef ligature; NFKC decomposition reorders the pair, "
             "so this recovery is wrong even though it looks like Arabic"
+        )
+    if decomposition_length is not None:
+        return guess, False, (
+            "contains a form that decomposes to "
+            f"{decomposition_length} characters; reversing the expanded form "
+            "misplaces them, so this recovery is unsafe"
         )
     return guess, True, (
         "NFKC + reverse round-trips exactly for this span IF bidi was applied too; "
