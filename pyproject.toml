@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "arabic-lint"
-version = "0.6.1"
+version = "0.6.2"
 description = "Find Arabic text corrupted by reshape+bidi before it was stored. Zero dependencies."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -30,9 +30,18 @@ dependencies = []
 [project.optional-dependencies]
 test = ["pytest", "arabic-reshaper", "python-bidi"]
 
+# The sidebar is the only part of a PyPI page most visitors read. The two links added
+# below are the evidence behind the tool's severity bands, not promotion: the archived
+# audit is what the bands were derived from, and the DOI is the form of it that can be
+# cited. Keeping them here means the citable artifact is one click from the install page.
 [project.urls]
 Homepage = "https://github.com/Syamjith-NK/arabic-lint"
 Issues = "https://github.com/Syamjith-NK/arabic-lint/issues"
+# Deliberately not called "Documentation": the README is the documentation, and this is a
+# write-up of how the audit was run, including the false positive it produced first.
+"Write-up" = "https://syamjith-nk.github.io/is-arabic-training-data-corrupted/"
+"Corpus audit (DOI)" = "https://doi.org/10.5281/zenodo.22733934"
+"Audit dataset" = "https://huggingface.co/datasets/syamjithnk/arabic-corpus-audit"
 
 [project.scripts]
 arabic-lint = "arabic_lint.cli:main"

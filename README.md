@@ -441,9 +441,11 @@ someone their data is harder to repair than it is.
   codepoints in a different order, so nothing here can flag it. A live example: pypdf
   classified the Arabic-Indic digits U+0660–U+0669 as right-to-left, so extraction returned
   `١٢٣٤` as `٤٣٢١` — valid Arabic digits in the wrong order, which this tool reads as clean.
-  [Fixed upstream](https://github.com/py-pdf/pypdf/pull/4077); if the Arabic you are scanning
-  came out of a PDF, check that your pypdf includes that fix, because scanning the output
-  will not tell you.
+  [Fixed upstream in pypdf](https://github.com/py-pdf/pypdf/pull/4077) — two lines of library
+  change plus a test, merged 14 September 2026 — but **no released pypdf carries it yet**:
+  6.18.1 is the newest release and predates the merge. So if the Arabic you are scanning came
+  out of a PDF, checking your pypdf version will not answer the question today; check the digit
+  order against the source document, because scanning the extracted text will not tell you.
 - **It cannot tell whether you control your dependency floor**, so it cannot tell you
   whether to delete the pre-shaping call or gate it on the renderer version. That
   distinction lives in your packaging and your users' upgrade path, not in the source
