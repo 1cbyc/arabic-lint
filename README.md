@@ -436,6 +436,14 @@ someone their data is harder to repair than it is.
 - The stored check only sees corruption that is *already written down*. The source
   check is what looks ahead at code that will create some, and `--doctor` is what
   answers it for the environment actually doing the rendering.
+- **Pure reordering is invisible to it, whatever produced it.** Reshaping leaves codepoints
+  that authored Arabic never contains, so it is detectable; reordering leaves the *same*
+  codepoints in a different order, so nothing here can flag it. A live example: pypdf
+  classified the Arabic-Indic digits U+0660–U+0669 as right-to-left, so extraction returned
+  `١٢٣٤` as `٤٣٢١` — valid Arabic digits in the wrong order, which this tool reads as clean.
+  [Fixed upstream](https://github.com/py-pdf/pypdf/pull/4077); if the Arabic you are scanning
+  came out of a PDF, check that your pypdf includes that fix, because scanning the output
+  will not tell you.
 - **It cannot tell whether you control your dependency floor**, so it cannot tell you
   whether to delete the pre-shaping call or gate it on the renderer version. That
   distinction lives in your packaging and your users' upgrade path, not in the source
