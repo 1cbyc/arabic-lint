@@ -1,0 +1,65 @@
+# Changelog
+
+This file starts at 0.7.0. Releases before it are in the git history and in the
+[tags](https://github.com/Syamjith-NK/arabic-lint/tags); rather than reconstruct them
+from memory and get a date wrong, the record begins where it is accurate.
+
+## 0.7.0
+
+### Added
+
+- **A third check: invisible bidi control characters**, in Arabic text and in source.
+  Reports the codepoint, its Unicode name, line, column and absolute offset, its kind
+  and bidi class, and whether its scope is balanced.
+
+  Two different problems share the signal, and they are graded apart:
+
+  - `residue` — a lone directional mark (`U+061C` ALM, `U+200E` LRM, `U+200F` RLM).
+    Invisible, and **not consistently normalized**: `nmt_nfkc`, the default normalizer
+    for SentencePiece training, strips LRM and RLM and leaves ALM. Measured on
+    `google/mt5-base`, a phrase goes from 5 pieces to 7 with an ALM in it and is
+    unchanged with an RLM, so the same visible text tokenizes two ways depending on
+    which pipeline saw it.
+    ([google/sentencepiece#1331](https://github.com/google/sentencepiece/issues/1331))
+  - `scoped` — an embedding, override or isolate that is opened and closed. Ordinary
+    directional markup; reported because pipelines disagree about whether it survives.
+  - `unpaired` — a scope with no terminator, or a terminator with no scope. An
+    unclosed `RLO` makes the rest of the paragraph *display* in an order it is not
+    stored in: the Trojan Source class.
+
+  The nine explicit formatting characters are **derived from their Unicode bidi
+  class**, not tabulated, so a future addition classifies itself — the same rule the
+  presentation-form check uses. The three marks are named, because the identifying
+  property is `Bidi_Control` and stdlib `unicodedata` does not expose it; the obvious
+  substitute (`Cf` plus a strong bidi class) matches 23 characters on Unicode 16.0,
+  including the Syriac abbreviation mark, two Kaithi number signs and sixteen Egyptian
+  hieroglyph joiners. A test asserts that over-match, so the reason cannot quietly
+  become false.
+
+- `--no-controls`, to turn the check off.
+
+### Behaviour worth knowing before you upgrade
+
+- **The check is quiet by design, and the silence is the feature.** A mark or a closed
+  scope is reported only when its paragraph contains Arabic. An *unpaired* control is
+  reported whatever the script, because an unterminated override reorders whatever
+  follows it and the Trojan Source case lands in files with no Arabic at all.
+- **Balance is computed per paragraph**, which is what the bidirectional algorithm
+  does. An opener on one line and a terminator on the next are two unpaired controls,
+  not a pair.
+- `--min-severity` gates the new findings **by position on its own ladder**, so
+  `--min-severity reshaped` narrows controls to the unpaired ones. The band names are
+  deliberately not shared: a stored `reshaped` means a shaping pass ran, which an
+  unterminated override does not.
+- `--fix` never touches a control. Whether one belongs in a document is a question
+  about the document, not about the character.
+- A repository that already carries unpaired controls will now fail a gate it passed
+  before. That is the point of the check, but it is a new failure mode on upgrade.
+
+### Unchanged
+
+- **Zero runtime dependencies.** `controls.py` imports `unicodedata` and
+  `dataclasses`, both stdlib. CI asserts that every declared requirement belongs to an
+  extra.
+- The stored and source checks behave exactly as in 0.6.2. Their output format, JSON
+  keys and exit codes are untouched; `control_findings` is a new key alongside them.

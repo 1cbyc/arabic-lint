@@ -4,9 +4,11 @@
     arabic-lint data.json --json
     arabic-lint . --exclude node_modules --exclude .git
 
-Two checks run over a tree:
+Three checks run over a tree:
 
   * stored corruption  - Arabic presentation forms that were written to disk
+  * bidi controls      - the invisible directional characters that survived into the
+                         text: residue a normalizer missed, or a scope nobody closed
   * source risk        - the reshape+bidi recipe feeding a renderer that already
                          shapes, which corrupts at render time (Python files only)
 
@@ -29,6 +31,7 @@ import sys
 from pathlib import Path
 
 from .detect import scan_text, SEVERITY_ORDER
+from .controls import scan_controls, RISK_ORDER
 from .source import scan_source, apply_fixes, HEADLINE
 from .doctor import report as doctor_report
 
@@ -72,12 +75,18 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-severity", choices=SEVERITY_ORDER, default="stray",
                     help="only report stored findings at this severity or above. "
                          "'reshaped' gates CI on pipeline damage while tolerating the odd "
-                         "pasted glyph (default: stray, i.e. report everything)")
+                         "pasted glyph (default: stray, i.e. report everything). The same "
+                         "floor applies to bidi controls by position, so 'reshaped' also "
+                         "narrows those to the unpaired ones")
     ap.add_argument("--no-source", action="store_true",
                     help="skip the Python source check, scan stored text only")
+    ap.add_argument("--no-controls", action="store_true",
+                    help="skip the bidi control check")
     ap.add_argument("--fix", action="store_true",
                     help="rewrite the source findings that can be fixed mechanically. "
-                         "Never touches stored text, which cannot be repaired safely.")
+                         "Never touches stored text, which cannot be repaired safely, "
+                         "and never strips a bidi control: whether one belongs there "
+                         "is a question about the document, not about the character.")
     args = ap.parse_args(argv)
 
     if args.doctor:
@@ -90,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
 
     excludes = DEFAULT_EXCLUDES | set(args.exclude)
     results: list[dict] = []
+    control_results: list[dict] = []
     source_results: list[dict] = []
     fixed_files: list[tuple[str, int]] = []
     scanned = 0
@@ -122,6 +132,29 @@ def main(argv: list[str] | None = None) -> int:
                     "advice": f.advice,
                 })
 
+            if not args.no_controls:
+                # One floor, two ladders. `--min-severity` names a stored severity, and
+                # the control risks sit at the same three positions, so the index is
+                # what carries across rather than the word.
+                for c in scan_controls(text).findings:
+                    if RISK_ORDER.index(c.risk) < floor:
+                        continue
+                    control_results.append({
+                        "file": str(path),
+                        "line": c.line,
+                        "col": c.col,
+                        "offset": c.offset,
+                        "codepoint": f"U+{c.codepoint:04X}",
+                        "name": c.name,
+                        "kind": c.kind,
+                        "bidi_class": c.bidi_class,
+                        "balanced": c.balanced,
+                        "partner_offset": c.partner_offset,
+                        "risk": c.risk,
+                        "note": c.note,
+                        "advice": c.advice,
+                    })
+
             if not args.no_source and path.suffix.lower() == ".py":
                 sreport = scan_source(text)
                 if args.fix and any(f.fix for f in sreport.findings):
@@ -150,11 +183,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.as_json:
         json.dump({"scanned": scanned, "findings": results,
+                   "control_findings": control_results,
                    "source_findings": source_results,
                    "fixed": [{"file": f, "calls": n} for f, n in fixed_files]}, sys.stdout,
                   ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
-        return 1 if (results or source_results) else 0
+        return 1 if (results or control_results or source_results) else 0
 
     if not args.quiet:
         for r in results:
@@ -166,6 +200,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    would be  : {r['recovered']}")
             print(f"    {r['advice']}")
             print(f"    {r['note']}")
+            print()
+
+    if not args.quiet:
+        for r in control_results:
+            print(f"{r['file']}:{r['line']}:{r['col']}: {r['codepoint']} {r['name']} "
+                  f"[{r['risk']}]")
+            print(f"    kind      : {r['kind']} (bidi class {r['bidi_class']}), "
+                  f"offset {r['offset']}")
+            print(f"    balance   : {r['note']}")
+            print(f"    {r['advice']}")
             print()
 
     if not args.quiet:
@@ -196,6 +240,11 @@ def main(argv: list[str] | None = None) -> int:
         breakdown = ", ".join(f"{by[s]} {s}" for s in SEVERITY_ORDER if by[s])
         parts.append(f"{len(results)} corrupted span(s) ({breakdown}); "
                      f"{unsafe} cannot be auto-fixed safely")
+    if control_results:
+        import collections
+        byrisk = collections.Counter(r["risk"] for r in control_results)
+        rbreak = ", ".join(f"{byrisk[s]} {s}" for s in RISK_ORDER if byrisk[s])
+        parts.append(f"{len(control_results)} bidi control(s) ({rbreak})")
     remaining = [r for r in source_results if not (args.fix and r["fixable"])]
     if remaining:
         parts.append(f"{len(remaining)} source site(s) that will corrupt at render time"

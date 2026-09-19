@@ -197,9 +197,13 @@ So the classification is derived rather than tabulated: a contextual shaping art
 is exactly a codepoint Unicode names `... ISOLATED/INITIAL/MEDIAL/FINAL FORM`.
 Anything else in the block is deliberate. New Unicode additions classify themselves.
 
-## Two checks
+## Three checks
 
 **Stored corruption** — Arabic presentation forms that were already written to disk.
+
+**Bidi controls** — the twelve invisible directional characters, when they survive
+into Arabic text or into source. See
+[invisible bidi controls](#invisible-bidi-controls) below.
 
 **Source risk** (Python files) — the reshape+bidi recipe feeding a renderer that
 already shapes, which corrupts at *render* time before anything is stored:
@@ -426,8 +430,73 @@ someone their data is harder to repair than it is.
     ordinary Arabic writing. Treating the block as corruption flags correct
     religious and formal text.
 
+## Invisible bidi controls
+
+Twelve characters in Unicode carry direction and nothing else. They are zero-width,
+they survive a proofread, and almost nothing handles all twelve the same way.
+
+The blind spot is real and measured. `nmt_nfkc`, the **default normalizer for
+SentencePiece training**, maps `U+200E` LEFT-TO-RIGHT MARK and `U+200F` RIGHT-TO-LEFT
+MARK to a space and leaves the other ten alone — including `U+061C` ARABIC LETTER
+MARK, which does for Arabic-script runs exactly what those two do everywhere else.
+On `google/mt5-base`, a phrase goes from 5 pieces to 7 with an ALM in it and is
+unchanged with an RLM; `google/mt5-base` also carries U+061C as its own vocabulary
+token. Same visible text, different token sequence, decided by which pipeline saw it.
+([filed upstream](https://github.com/google/sentencepiece/issues/1331))
+
+An unterminated scope is a different problem with a different weight:
+
+```
+config.py:14:31: U+202E RIGHT-TO-LEFT OVERRIDE [unpaired]
+    kind      : override (bidi class RLO), offset 402
+    balance   : never closed, so its scope runs to the end of the paragraph
+    the directional scope is not paired. An unclosed embedding or override applies to
+    everything after it to the end of the paragraph, so what is displayed is not the
+    order the text is stored in. Close it, or remove it.
+```
+
+That is the Trojan Source class: the line *displays* in an order it is not stored in.
+A balanced `RLE … PDF` is ordinary directional markup and is graded `scoped`, not
+flagged as a defect.
+
+| risk | what it is | gated by |
+|---|---|---|
+| `residue` | a lone ALM / LRM / RLM | `--min-severity stray` (default) |
+| `scoped` | an explicit run, opened and closed | `--min-severity partial` |
+| `unpaired` | a scope with no terminator, or a terminator with no scope | `--min-severity reshaped` |
+
+One `--min-severity` floor gates both ladders by position, so `--min-severity
+reshaped` narrows stored findings to pipeline damage *and* controls to unpaired ones.
+The words are not shared on purpose: a stored `reshaped` means a shaping pass ran, and
+printing that beside an unterminated override would be false.
+
+**What stays quiet, and why.** A mark or a closed scope is reported only when its
+paragraph actually contains Arabic — otherwise this would fire on every correctly
+marked-up Hebrew document on earth. An *unpaired* control is reported whatever the
+script, because an unterminated override reorders whatever follows it, and the Trojan
+Source case lands in source files with no Arabic in them at all.
+
+The nine explicit formatting characters are **derived from their Unicode bidi class**,
+not tabulated, so additions classify themselves — the same rule as the presentation
+forms. The three directional marks are named, because the property that identifies
+them is `Bidi_Control`, which stdlib `unicodedata` does not expose. The obvious
+substitute is wrong and the suite proves it: `Cf` + a strong bidi class matches 23
+characters on Unicode 16.0, among them the Syriac abbreviation mark, two Kaithi number
+signs and sixteen Egyptian hieroglyph joiners — characters people type on purpose.
+Flagging those would be the ornate-parentheses mistake in a different block.
+
+`--fix` never touches a control. Whether one belongs in a document is a question about
+the document, not about the character. Pass `--no-controls` to turn the check off.
+
 ## Known limits
 
+- **Balance is computed per paragraph**, which is what the bidirectional algorithm
+  does, so an opener on one line and its terminator on the next are reported as two
+  unpaired controls. That is correct — the scope really did end at the paragraph — but
+  it will surprise anyone who wrote them as a pair.
+- The control check answers "is this scope closed", not "is this document's direction
+  right". It does not resolve embedding levels, and it cannot tell you whether a
+  correctly balanced override was a good idea.
 - A document whose only Arabic is a standalone Allah ligature is missed. That is
   the deliberate trade above; any corrupted phrase around it still trips Forms-B.
 - The recovery direction assumes bidi was applied. Text that was reshaped but
