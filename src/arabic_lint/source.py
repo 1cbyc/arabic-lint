@@ -259,6 +259,10 @@ def scan_source(text: str) -> SourceReport:
 
     v = _Visitor()
     v.visit(tree)
+    # `generate` is common far beyond WordCloud (for example, transformer models).
+    # It proves that text is drawn only when this file actually imports wordcloud.
+    if "wordcloud" not in v.imports:
+        v.drawing -= WORDCLOUD_CALLS
     # (call, kind) in source order. The two kinds differ only in what the message
     # says: every gate below is shared, because what makes either of them a bug is
     # the same question about the renderer.

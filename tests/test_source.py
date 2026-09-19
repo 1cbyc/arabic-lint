@@ -108,6 +108,18 @@ def shape(text):
 print(shape("مرحبا"))
 """
 
+GENERATE_WITHOUT_WORDCLOUD = """
+import matplotlib.pyplot as plt
+import arabic_reshaper
+from bidi import get_display
+
+def shape(text):
+    return get_display(arabic_reshaper.reshape(text))
+
+result = model.generate(prompt)
+print(shape(result))
+"""
+
 # --- the bidi-only form (issue #1) ---------------------------------------------
 #
 # No reshaper anywhere. `python-bidi` is downloaded around 9.4 million times a
@@ -255,6 +267,12 @@ def test_flags_each_wordcloud_generation_entry_point():
 
 def test_wordcloud_import_without_generation_is_silent():
     r = scan_source(WORDCLOUD_UNUSED)
+    assert r.findings == []
+    assert any("nothing in this file draws" in s for s in r.skipped)
+
+
+def test_generate_without_wordcloud_import_is_silent():
+    r = scan_source(GENERATE_WITHOUT_WORDCLOUD)
     assert r.findings == []
     assert any("nothing in this file draws" in s for s in r.skipped)
 
