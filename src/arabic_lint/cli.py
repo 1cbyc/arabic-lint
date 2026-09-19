@@ -122,7 +122,7 @@ def main(argv: list[str] | None = None) -> int:
                     chunks = read_notebook(text)
                 except (json.JSONDecodeError, ValueError) as exc:
                     print(f"arabic-lint: cannot read notebook {path}: {exc}", file=sys.stderr)
-                    return 2
+                    continue
             else:
                 chunks = []
 
@@ -181,11 +181,8 @@ def main(argv: list[str] | None = None) -> int:
             for chunk in source_texts:
                 source_text = chunk.text if chunk is not None else text
                 sreport = scan_source(source_text)
-                if args.fix and any(f.fix for f in sreport.findings):
-                    if chunk is not None:
-                        new_text, n = source_text, 0
-                    else:
-                        new_text, n = apply_fixes(text, sreport.findings)
+                if args.fix and chunk is None and any(f.fix for f in sreport.findings):
+                    new_text, n = apply_fixes(text, sreport.findings)
                     try:
                         compile(new_text, str(path), "exec")
                     except SyntaxError as exc:

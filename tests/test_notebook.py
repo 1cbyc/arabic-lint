@@ -44,3 +44,44 @@ def test_directory_scan_checks_notebook_cells_and_outputs(tmp_path, capsys):
     stored_only = json.loads(capsys.readouterr().out)
     assert len(stored_only["findings"]) == 1
     assert stored_only["source_findings"] == []
+
+
+def test_fix_leaves_notebook_byte_identical(tmp_path, capsys):
+    notebook = {
+        "cells": [
+            {
+                "cell_type": "code",
+                "source": [
+                    "import matplotlib.pyplot as plt\n",
+                    "import arabic_reshaper\n",
+                    "from bidi.algorithm import get_display\n",
+                    "plt.title(get_display(arabic_reshaper.reshape('مرحبا')))\n",
+                ],
+                "outputs": [],
+            },
+            {"cell_type": "markdown", "source": ["Keep this cell\n"]},
+        ],
+        "metadata": {"language_info": {"name": "python"}},
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    path = tmp_path / "fix.ipynb"
+    original = json.dumps(notebook, ensure_ascii=False, indent=1).encode()
+    path.write_bytes(original)
+
+    assert main([str(path), "--fix"]) == 1
+    assert path.read_bytes() == original
+    assert "notebook cells are not rewritten automatically" in capsys.readouterr().out
+
+
+def test_malformed_notebook_warns_and_scan_continues(tmp_path, capsys):
+    (tmp_path / "broken.ipynb").write_text('{"cells": [', encoding="utf-8")
+    (tmp_path / "finding.txt").write_text("ﺎﺒﺣﺮﻣ\n", encoding="utf-8")
+
+    assert main([str(tmp_path), "--json"]) == 1
+    captured = capsys.readouterr()
+    report = json.loads(captured.out)
+    assert [finding["file"] for finding in report["findings"]] == [
+        str(tmp_path / "finding.txt")
+    ]
+    assert f"cannot read notebook {tmp_path / 'broken.ipynb'}" in captured.err
